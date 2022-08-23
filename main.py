@@ -15,10 +15,17 @@ def perform_eda():
 
 
 def train():
+
     df_train, df_test = utils.read_train_test_data()
 
-    train_data = [str(t) for t in df_train[constants.EXCERPT].values]
-    train_targets = [float(t) for t in df_train[constants.BT_EASINESS].values]
+    # train_data = [str(t) for t in df_train[constants.EXCERPT].values]
+    # train_targets = [float(t) for t in df_train[constants.BT_EASINESS].values]
+
+    train_data = [str(t) for t in df_train.iloc[:2000][constants.EXCERPT].values]
+    train_targets = [float(t) for t in df_train.iloc[:2000][constants.BT_EASINESS].values]
+
+    validation_data = [str(t) for t in df_train.iloc[2000:][constants.EXCERPT].values]
+    validation_targets = [float(t) for t in df_train.iloc[2000:][constants.BT_EASINESS].values]
 
     hyperparams = {constants.BATCH_SIZE: 3,
                    constants.LEARNING_RATE: 9e-6,
@@ -33,7 +40,7 @@ def train():
                 output_model_name='albert_deneme',
                 train_data=train_data, train_targets=train_targets,
                 hyperparams=hyperparams, config=config,
-                validation_data=None, validation_targets=None)
+                validation_data=validation_data, validation_targets=validation_targets)
 
     dummy = -32
 

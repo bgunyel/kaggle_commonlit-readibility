@@ -61,9 +61,13 @@ def train(input_model_name, output_model_name,
     if not os.path.exists(model_folder):
         model_folder = input_model_name
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f'Device: {device}')
+    print('--')
+
     tokenizer = AutoTokenizer.from_pretrained(model_folder)
 
-    train_encodings = tokenizer(train_data, truncation=True, padding=True, max_length=constants.MAX_LENGTH)
+    train_encodings = tokenizer(train_data, truncation=True, padding=True, max_length=constants.MAX_LENGTH).to(device)
     train_dataset = CommonLitDataset(train_encodings, train_targets)
     train_dl = DataLoader(train_dataset, shuffle=True, batch_size=hyperparams[constants.BATCH_SIZE])
 
@@ -91,6 +95,7 @@ def train(input_model_name, output_model_name,
 
     model = AutoModelForSequenceClassification.from_pretrained(model_folder, num_labels=config[constants.NUM_LABELS])
     model.config = AutoConfig.from_pretrained(model_folder, num_labels=config[constants.NUM_LABELS])
+    model = model.to(device)
 
     optimizer = AdamW(model.parameters(),
                       correct_bias=hyperparams[constants.BIAS],
@@ -113,6 +118,9 @@ def train(input_model_name, output_model_name,
                       optimizers=(optimizer, scheduler),
                       callbacks=[CommonLitCallback],
                       compute_metrics=compute_metrics)
+
+    trainer.train(),
+
 
     dummy = -32
 
