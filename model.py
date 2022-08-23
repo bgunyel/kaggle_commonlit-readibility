@@ -67,7 +67,7 @@ def train(input_model_name, output_model_name,
 
     tokenizer = AutoTokenizer.from_pretrained(model_folder)
 
-    train_encodings = tokenizer(train_data, truncation=True, padding=True, max_length=constants.MAX_LENGTH).to(device)
+    train_encodings = tokenizer(train_data, truncation=True, padding=True, max_length=constants.MAX_LENGTH)
     train_dataset = CommonLitDataset(train_encodings, train_targets)
     train_dl = DataLoader(train_dataset, shuffle=True, batch_size=hyperparams[constants.BATCH_SIZE])
 
@@ -76,7 +76,6 @@ def train(input_model_name, output_model_name,
         validation_dataset = CommonLitDataset(validation_encodings, validation_targets)
     else:
         validation_dataset = None
-
 
     training_steps = len(train_dl) * hyperparams[constants.NUM_EPOCH]
     warmup_steps = math.ceil(training_steps * 0.06)
@@ -95,7 +94,7 @@ def train(input_model_name, output_model_name,
 
     model = AutoModelForSequenceClassification.from_pretrained(model_folder, num_labels=config[constants.NUM_LABELS])
     model.config = AutoConfig.from_pretrained(model_folder, num_labels=config[constants.NUM_LABELS])
-    model = model.to(device)
+    # model = model.to(device)
 
     optimizer = AdamW(model.parameters(),
                       correct_bias=hyperparams[constants.BIAS],
