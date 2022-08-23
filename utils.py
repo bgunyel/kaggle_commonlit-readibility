@@ -25,6 +25,11 @@ def read_train_test_data():
     return df_train, df_test
 
 
+def generate_local_model_folder_path(model_name):
+    out = os.path.join(constants.MODELS_FOLDER, model_name)
+    return out
+
+
 def plot_triplet(df, feature):
     df_train, df_test = separate_train_test(df=df)
 
