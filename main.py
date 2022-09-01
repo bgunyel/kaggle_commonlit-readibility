@@ -30,7 +30,7 @@ def train():
     hyperparams = {constants.BATCH_SIZE: 3,
                    constants.LEARNING_RATE: 9e-6,
                    constants.WEIGHT_DECAY: 0.01,
-                   constants.NUM_EPOCH: 5,
+                   constants.NUM_EPOCH: 20,
                    constants.BIAS: True}
     config = {constants.NUM_LABELS: 1,
               constants.IS_MULTI_LABEL: False,

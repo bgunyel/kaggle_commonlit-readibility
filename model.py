@@ -124,5 +124,9 @@ def train(input_model_name, output_model_name,
     dummy = -32
 
 
+def predict():
+    pass
+
+
 def train_with_cross_validation():
     pass
