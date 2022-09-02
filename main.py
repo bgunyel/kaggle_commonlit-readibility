@@ -57,7 +57,8 @@ def test():
 def main(name):
     print(name)
 
-    train()
+    perform_eda()
+    # train()
 
     dummy = -32
 
