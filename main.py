@@ -27,14 +27,14 @@ def train():
     validation_data = [str(t) for t in df_train.iloc[2000:][constants.EXCERPT].values]
     validation_targets = [float(t) for t in df_train.iloc[2000:][constants.BT_EASINESS].values]
 
-    hyperparams = {constants.BATCH_SIZE: 3,
+    hyperparams = {constants.BATCH_SIZE: 10,
                    constants.LEARNING_RATE: 9e-6,
                    constants.WEIGHT_DECAY: 0.01,
-                   constants.NUM_EPOCH: 20,
+                   constants.NUM_EPOCH: 50,
                    constants.BIAS: True}
     config = {constants.NUM_LABELS: 1,
               constants.IS_MULTI_LABEL: False,
-              constants.LOGGING_STEPS: 60}
+              constants.LOGGING_STEPS: 43}
 
     model.train(input_model_name=constants.ALBERT_BASE_V2,
                 output_model_name='albert_deneme',
@@ -57,8 +57,9 @@ def test():
 def main(name):
     print(name)
 
-    perform_eda()
+    # perform_eda()
     # train()
+    test()
 
     dummy = -32
 

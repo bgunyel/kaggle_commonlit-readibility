@@ -3,10 +3,12 @@ import os
 import datetime
 
 import torch
+import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 # HuggingFace
-from transformers import AutoConfig, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoConfig, AutoTokenizer, AutoModelForSequenceClassification, AutoModel
+from accelerate import Accelerator
 from transformers import Trainer, TrainingArguments, TrainerCallback, TrainerState, TrainerControl, IntervalStrategy
 from transformers import AdamW, get_linear_schedule_with_warmup
 # from datasets import load_metric
@@ -18,115 +20,134 @@ import constants
 import utils
 
 
-class CommonLitDataset(Dataset):
+class CLDataset(Dataset):
     def __init__(self, encodings, targets):
-        self.encodings = encodings
-        self.targets = targets
+        pass
 
     def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item['labels'] = torch.tensor(self.targets[idx])
-        return item
+        pass
 
     def __len__(self):
-        return len(self.targets)
+        pass
 
 
-class CommonLitCallback(TrainerCallback):
+class AttentionHead(nn.Module):
+    def __init__(self, in_features, hidden_dimension):
+        super().__init__()
+        self.in_features = in_features
+        self.W = nn.Linear(in_features, hidden_dimension)
+        self.V = nn.Linear(hidden_dimension, 1)
 
-    def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        print(f'Training Start: {datetime.datetime.now()}')
-        print('--')
-
-    def on_train_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        print(f'Training End: {datetime.datetime.now()}')
-        print('--')
-
-    def on_epoch_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        print(f'Epoch Start: {state.epoch} / {args.num_train_epochs} @ {datetime.datetime.now()}')
-        print('--')
-
-    def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        print(f'Epoch Finish: {state.epoch} / {args.num_train_epochs} @ {datetime.datetime.now()}')
-        print('--')
+    def forward(self, x):
+        att = torch.tanh(self.W(x))
+        score = self.V(att)
+        attention_weights = torch.softmax(score, dim=1)
+        context_vector = torch.sum(attention_weights * x, dim=1)
+        return context_vector
 
 
-def train(input_model_name, output_model_name,
-          train_data, train_targets,
-          hyperparams, config,
-          validation_data=None, validation_targets=None):
-    model_folder = utils.generate_local_model_folder_path(input_model_name)
-    output_folder = utils.generate_local_model_folder_path(output_model_name)
+class CLModel(nn.Module):
+    def __init__(self, path):
+        super(CLModel, self).__init__()
+        self.automodel = AutoModel.from_pretrained(path)
+        self.config = AutoConfig.from_pretrained(path)
+        self.attention_head = AttentionHead(self.config.hidden_size, self.config.hidden_size)
+        self.dropout = nn.Dropout(0.1)
+        self.linear = nn.Linear(self.config.hidden_size, 1)
 
-    if not os.path.exists(model_folder):
-        model_folder = input_model_name
+    def forward(self, **xb):
+        x = self.roberta(**xb)[0]
+        x = self.head(x)
+        x = self.dropout(x)
+        x = self.linear(x)
+        return x
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f'Device: {device}')
-    print('--')
 
-    tokenizer = AutoTokenizer.from_pretrained(model_folder)
+def loss_fn(y_pred, y_gt):
+    y_pred = y_pred.view(-1)
+    y_gt = y_gt.view(-1)
+    out = torch.sqrt(nn.MSELoss()(y_pred, y_gt))
+    return out
 
-    train_encodings = tokenizer(train_data, truncation=True, padding=True, max_length=constants.MAX_LENGTH)
-    train_dataset = CommonLitDataset(train_encodings, train_targets)
-    train_dl = DataLoader(train_dataset, shuffle=True, batch_size=hyperparams[constants.BATCH_SIZE])
 
-    if (validation_data is not None) and (validation_targets is not None):
-        validation_encodings = tokenizer(validation_data, truncation=True, padding=True, max_length=constants.MAX_LENGTH)
-        validation_dataset = CommonLitDataset(validation_encodings, validation_targets)
-    else:
-        validation_dataset = None
+def update(model, data, target, optimizer, accelerator, scheduler):
 
-    training_steps = len(train_dl) * hyperparams[constants.NUM_EPOCH]
-    warmup_steps = math.ceil(training_steps * 0.06)
+    device = accelerator.device
+    model.train()
+    data = data.to(device)
+    target = target.to(device)
+    optimizer.zero_grad()
+    out = model(data)
+    loss = loss_fn(out, target)
+    accelerator.backward(loss)
+    optimizer.step()
+    scheduler.step()
+    return loss.item()
 
-    training_args = TrainingArguments(output_dir=output_folder,
-                                      num_train_epochs=hyperparams[constants.NUM_EPOCH],
-                                      per_device_train_batch_size=hyperparams[constants.BATCH_SIZE],
-                                      per_device_eval_batch_size=1,
-                                      logging_dir=constants.OUT_FOLDER,
-                                      logging_steps=config[constants.LOGGING_STEPS],
-                                      seed=constants.RANDOM_SEED,
-                                      weight_decay=hyperparams[constants.WEIGHT_DECAY],
-                                      learning_rate=hyperparams[constants.LEARNING_RATE],
-                                      save_strategy=IntervalStrategy.EPOCH,
-                                      evaluation_strategy=IntervalStrategy.EPOCH)
 
-    model = AutoModelForSequenceClassification.from_pretrained(model_folder, num_labels=config[constants.NUM_LABELS])
-    model.config = AutoConfig.from_pretrained(model_folder, num_labels=config[constants.NUM_LABELS])
-    # model = model.to(device)
+def validate(model, validation_data_loader, device):
+    model.eval()
+    validation_loss = 0
 
-    optimizer = AdamW(model.parameters(),
-                      correct_bias=hyperparams[constants.BIAS],
-                      lr=hyperparams[constants.LEARNING_RATE])
+    with torch.no_grad():
+        for x_val, y_gt in validation_data_loader:
+            x_val = x_val.to(device)
+            y_gt = y_gt.to(device)
+            y_val = model(x_val)
+            validation_loss += loss_fn(y_val, y_gt)
+
+    validation_loss /= len(validation_data_loader.dataset)
+    return validation_loss
+
+
+def train_one_fold(train_data_loader, validation_data_loader, hyperparams, number_of_epochs, validation_step):
+
+    accelerator = Accelerator()
+    device = accelerator.device
+
+    model = CLModel().to(device) # TODO
+    optimizer = torch.optim.AdamW(model.parameters(),
+                                  lr=hyperparams[constants.LEARNING_RATE],
+                                  weight_decay=hyperparams[constants.WEIGHT_DECAY])
+
+    number_of_training_steps = int(len(train_data_loader) * hyperparams[constants.NUM_EPOCH])
+    number_of_warmup_steps = int(0.05 * number_of_training_steps)
     scheduler = get_linear_schedule_with_warmup(optimizer=optimizer,
-                                                num_training_steps=training_steps,
-                                                num_warmup_steps=warmup_steps)
-    metric = evaluate.load(constants.ACCURACY)
-    # metric = load_metric(constants.ACCURACY)
+                                                num_training_steps=number_of_training_steps,
+                                                num_warmup_steps=number_of_warmup_steps)
+    model, optimizer, training_dataloader, scheduler = accelerator.prepare(model, optimizer,
+                                                                           train_data_loader, scheduler)
 
-    def compute_metrics(eval_pred):
-        logits, labels = eval_pred
-        predictions = np.argmax(logits, axis=-1)
-        return metric.compute(predictions=predictions, references=labels)
+    for epoch in range(hyperparams[constants.NUM_EPOCH]):
 
-    trainer = Trainer(model=model,
-                      args=training_args,
-                      train_dataset=train_dataset,
-                      eval_dataset=validation_dataset,
-                      optimizers=(optimizer, scheduler),
-                      callbacks=[CommonLitCallback],
-                      compute_metrics=compute_metrics)
+        training_loss = 0
 
-    trainer.train(),
+        for batch_idx, (data, target) in enumerate(train_data_loader):
 
+            training_loss += update(model=model, data=data, target=target,
+                                    optimizer=optimizer, accelerator=accelerator, scheduler=scheduler) # TODO
 
-    dummy = -32
+            if (batch_idx % validation_step == 0) or (batch_idx == len(train_data_loader) - 1):
+                validation_loss = validate(model=model, validation_data_loader=validation_data_loader, device=device)
+
+                # TODO: Save the model
+
+        training_loss /= len(training_dataloader.dataset)
 
 
-def predict():
+
+
+
+
+
+def predict(input_model_name, test_data, test_targets, hyperparams, config):
     pass
 
 
-def train_with_cross_validation():
-    pass
+def train(hyperparams, nfolds=1):
+
+    for f in range(nfolds):
+
+
+
+

@@ -4,6 +4,7 @@
 
 ## Table of Contents
 * [Introduction](#introduction)
+* [Algorithms](#algorithms)
 * [References](#references)
 
 ## Introduction
