@@ -4,6 +4,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from sklearn.model_selection import StratifiedKFold
 
 import constants
 
@@ -16,6 +17,9 @@ def read_data():
 def separate_train_test(df):
     df_train = df.loc[df[constants.KAGGLE_SPLIT] == constants.TRAIN]
     df_test = df.loc[df[constants.KAGGLE_SPLIT] == constants.TEST]
+
+    df_train.reset_index(inplace=True)
+    df_test.reset_index(inplace=True)
     return df_train, df_test
 
 
@@ -49,3 +53,14 @@ def plot_triplet(df, feature):
                  hist_kws={'rwidth': 0.85, 'edgecolor': 'black', 'alpha': 0.8})
     sns.boxplot(x=constants.KAGGLE_SPLIT, y=feature, data=df, ax=ax3)
     plt.show()
+
+
+def split_stratified_folds(df, n_folds, label):
+    out_df = df.copy(deep=True)
+    out_df[constants.FOLD] = -1
+
+    stratified_fold = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=constants.RANDOM_SEED)
+    for k, (train_idx, valid_idx) in enumerate(stratified_fold.split(X=out_df, y=out_df[label])):
+        out_df.loc[valid_idx, constants.FOLD] = k
+
+    return out_df

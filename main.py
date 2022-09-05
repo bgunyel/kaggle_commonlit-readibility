@@ -2,7 +2,9 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import StratifiedKFold
 
 import constants
 import stats
@@ -52,6 +54,17 @@ def test():
                               squared=False)
 
     print(f'RMSE: {rmse}')
+
+    number_of_bins = 10
+    df_train.loc[:, constants.BIN] = pd.cut(df_train[constants.BT_EASINESS], bins=number_of_bins, labels=False)
+    plt.figure(), sns.displot(data=df_train, x=constants.BIN, kind='hist', hue=constants.BIN, bins=number_of_bins,
+                              binrange=(-0.5, number_of_bins - 0.5), stat='percent'), plt.show()
+
+    n_folds = 5
+
+    df_train = utils.split_stratified_folds(df=df_train, n_folds=n_folds, label=constants.BIN)
+
+    dummy = -32
 
 
 def main(name):

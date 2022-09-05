@@ -12,6 +12,8 @@ TEST = 'Test'
 
 BT_EASINESS = 'BT Easiness'
 EXCERPT = 'Excerpt'
+BIN = 'bin'
+FOLD = 'fold'
 
 ALBERT_BASE_V2 = 'albert-base-v2'
 ALBERT_LARGE_V2 = 'albert-large-v2'
