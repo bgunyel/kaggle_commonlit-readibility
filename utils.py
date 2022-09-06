@@ -64,3 +64,16 @@ def split_stratified_folds(df, n_folds, label):
         out_df.loc[valid_idx, constants.FOLD] = k
 
     return out_df
+
+
+def compute_grid_dimensions(number_of_elements):
+
+    n_rows = 1
+    n_cols = 1
+
+    while n_cols * n_rows < number_of_elements:
+        if n_cols == n_rows:
+            n_cols += 1
+        else:
+            n_rows += 1
+    return n_rows, n_cols

@@ -14,6 +14,7 @@ import model
 
 def perform_eda():
     stats.examine_target_distribution()
+    stats.examine_stratified_folds()
 
 
 def train():
@@ -70,9 +71,9 @@ def test():
 def main(name):
     print(name)
 
-    # perform_eda()
+    perform_eda()
     # train()
-    test()
+    # test()
 
     dummy = -32
 
